@@ -160,12 +160,23 @@ main{flex:1;padding:16px 16px 120px}
 .view{position:relative;background:#fff;border:1px solid var(--line-strong);border-radius:var(--r-s);overflow:hidden;cursor:crosshair;touch-action:manipulation;padding:4px}
 .view .vlabel{position:absolute;top:6px;left:6px;z-index:2;background:var(--navy);color:#fff;font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;padding:3px 7px;border-radius:4px;pointer-events:none}
 .view img.car{display:block;width:100%;height:auto;user-select:none;-webkit-user-drag:none}
-.view .mk{position:absolute;width:24px;height:24px;margin:-12px 0 0 -12px;border-radius:50%;background:var(--bad);color:#fff;font-size:12px;font-weight:700;display:grid;place-items:center;border:2px solid var(--surface);box-shadow:0 2px 6px rgba(0,0,0,.3);pointer-events:none}
+.view .mk{position:absolute;width:24px;height:24px;margin:-12px 0 0 -12px;border-radius:50%;background:var(--bad);color:#fff;font-size:12px;font-weight:700;display:grid;place-items:center;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);pointer-events:none}
+.view .mk.prior{background:var(--warn)}
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin:0 0 10px;font-size:12.5px;color:var(--text-2)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend .sw{width:13px;height:13px;border-radius:50%;display:inline-block}
+.legend .sw.prior{background:var(--warn)}
+.legend .sw.new{background:var(--bad)}
+.grouphead{font-size:11.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-3);margin:20px 0 10px}
+.grouphead:first-of-type{margin-top:8px}
 .hintbar{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text-2);background:var(--surface-2);border:1px dashed var(--line-strong);border-radius:var(--r-s);padding:9px 11px;margin-bottom:10px}
 
 /* ---------- damage list ---------- */
 .dmg{border:1px solid var(--line);border-radius:var(--r-s);padding:12px;margin-top:10px;background:var(--surface-2)}
 .dmg.need{border-color:var(--bad);background:var(--bad-bg)}
+.dmg.prior{border-color:var(--warn);background:var(--warn-bg)}
+.dmg-h .num.prior{background:var(--warn)}
+.dmg.prior .linkbtn{color:var(--warn)}
 .dmg-h{display:flex;align-items:center;gap:10px;margin-bottom:10px}
 .dmg-h .num{flex:none;width:24px;height:24px;border-radius:50%;background:var(--bad);color:#fff;font-size:12px;font-weight:700;display:grid;place-items:center}
 .dmg-h b{flex:1;font-family:Archivo;font-size:14.5px}
@@ -278,16 +289,6 @@ main{flex:1;padding:16px 16px 120px}
 
 <div class="toast" id="toast"></div>
 <div class="overlay" id="overlay"><div class="box"><div class="spin"></div><div id="ovText">Préparation du PDF…</div></div></div>
-<div class="overlay" id="codeOv"><div class="box" style="text-align:left">
- <h2 style="margin:0 0 6px;font-size:17px">Code d'équipe</h2>
- <p style="margin:0 0 14px;color:var(--text-2);font-size:13.5px">À saisir une seule fois sur cet appareil. Il permet d'enregistrer les PV dans l'historique partagé de l'équipe.</p>
- <div class="f"><input id="codeIn" class="mono" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="Code à 6 chiffres"></div>
- <div id="codeErr" style="display:none;color:var(--bad);font-size:13px;margin-top:8px"></div>
- <div style="display:flex;gap:10px;margin-top:16px">
-  <button class="btn ghost" id="codeSkip" type="button">Plus tard</button>
-  <button class="btn primary" id="codeOk" type="button">Valider</button>
- </div>
-</div></div>
 <input type="file" id="filepick" accept="image/*" capture="environment" class="hide">
 
 <script>
@@ -318,6 +319,16 @@ var TYPES = {
     label: 'PV check-lavage', short: 'Check-lavage', tag: 'lav',
     addr: "Adresse d'intervention",
     travaux: ['lavage', 'typeLavage', 'laveGlace', 'refroidissement', 'kitSecurite', 'kitGonflage', 'revision']
+  },
+  recuperationSite: {
+    label: 'PV de récupération sur site', short: 'Récup. site', tag: 'rec',
+    addr: 'Adresse de récupération',
+    travaux: null, sansClient: true
+  },
+  livraisonSite: {
+    label: 'PV de livraison sur site', short: 'Livraison site', tag: 'liv',
+    addr: 'Adresse de livraison',
+    travaux: ['lavage', 'typeLavage'], sansClient: true
   }
 };
 
@@ -328,9 +339,28 @@ var EQUIP = [
   { k: 'roue',      l: 'Roue de secours',           t: 'bool' },
   { k: 'carte',     l: 'Carte carburant',           t: 'bool' },
   { k: 'gonflage',  l: 'Kit gonflage',              t: 'bool' },
+  { k: 'cableDom',  l: 'Câble domestique',          t: 'seg', opts: ['OUI', 'NON', 'N/A'] },
+  { k: 'cableBorne',l: 'Câble borne',               t: 'seg', opts: ['OUI', 'NON', 'N/A'] },
   { k: 'badge',     l: 'Badge télépéage',           t: 'bool' },
   { k: 'tapisAv',   l: 'Tapis avant',               t: 'bool' },
   { k: 'tapisAr',   l: 'Tapis arrière',             t: 'bool' }
+];
+var DOCS = [
+  { k: 'griseOrig',  l: 'Carte grise originale', t: 'bool' },
+  { k: 'griseCopie', l: 'Carte grise copie',     t: 'bool' },
+  { k: 'memoAssur',  l: 'Mémo assurance',        t: 'bool' }
+];
+var USURE = [
+  { k: 'disqueAv',  l: 'Disques avant',      t: 'seg', opts: ['BON', 'MOYEN', 'MAUVAIS'] },
+  { k: 'disqueAr',  l: 'Disques arrière',    t: 'seg', opts: ['BON', 'MOYEN', 'MAUVAIS'] },
+  { k: 'plaqAv',    l: 'Plaquettes avant',   t: 'seg', opts: ['BON', 'MOYEN', 'MAUVAIS'] },
+  { k: 'plaqAr',    l: 'Plaquettes arrière', t: 'seg', opts: ['BON', 'MOYEN', 'MAUVAIS'] },
+  { k: 'essuieAv',  l: 'Essuie-glace avant', t: 'seg', opts: ['BON', 'MOYEN', 'MAUVAIS'] },
+  { k: 'essuieAr',  l: 'Essuie-glace arrière', t: 'seg', opts: ['BON', 'MOYEN', 'MAUVAIS'] }
+];
+var PROPRETE = [
+  { k: 'int', l: 'Propreté intérieure', t: 'seg', opts: ['BON', 'MOYEN', 'MAUVAIS'] },
+  { k: 'ext', l: 'Propreté extérieure', t: 'seg', opts: ['BON', 'MOYEN', 'MAUVAIS'] }
 ];
 var SECU = [
   { k: 'gilet',     l: 'Gilet jaune', t: 'bool' },
@@ -371,7 +401,7 @@ var HIST = [];   /* rempli par storeLoad() de la couche de stockage */
 
 var S = null;          // current PV being filled
 var screen = 'home';   // home | step | history | done
-var step = 1;
+var step = 'infos';
 var lastPdf = null;
 var canPublish = null; // null = unknown, true/false after first attempt
 
@@ -400,10 +430,11 @@ function newPV(type) {
     createdAt: d.toISOString(),
     driver: rememberedDriver(), mission: '', immat: '', client: '', adresse: '',
     damages: [], reco: '',
-    equip: {}, secu: {}, pneus: {}, travaux: {},
+    equip: {}, docs: {}, secu: {}, pneus: {}, usure: {}, proprete: {}, travaux: {},
     comment: '',
     note: 0, noteComment: '',
-    sigClient: '', sigDriver: ''
+    sigClient: '', clientCode: '', sigDriver: '',
+    priorFrom: null
   };
 }
 
@@ -427,13 +458,51 @@ function busy(on, txt) { $('overlay').classList.toggle('on', !!on); if (txt) $('
 /* steps present for the current PV type */
 function stepsFor(type) {
   var a = [
-    { n: 1, t: 'Informations générales' },
-    { n: 2, t: 'État du véhicule' },
-    { n: 3, t: 'Équipements et pneus' }
+    { k: 'infos', t: 'Informations générales' },
+    { k: 'etat',  t: 'État du véhicule' },
+    { k: 'equip', t: 'Équipements et documents' },
+    { k: 'usure', t: 'Pneus, consommables et propreté' }
   ];
-  if (TYPES[type].travaux) a.push({ n: 4, t: 'Travaux réalisés' });
-  a.push({ n: 5, t: 'Signatures et satisfaction' });
+  if (TYPES[type].travaux) a.push({ k: 'travaux', t: 'Travaux réalisés' });
+  a.push({ k: 'fin', t: TYPES[type].sansClient ? 'Signature du driver' : 'Signatures et satisfaction' });
   return a;
+}
+function stepIndex(type, k) {
+  var st = stepsFor(type);
+  for (var i = 0; i < st.length; i++) if (st[i].k === k) return i;
+  return 0;
+}
+
+/* dommages : les antérieurs d'abord, puis les nouveaux, en numérotation continue */
+function sortDamages(list) {
+  var prior = list.filter(function (d) { return d.prior; });
+  var fresh = list.filter(function (d) { return !d.prior; });
+  return prior.concat(fresh);
+}
+
+/* dommages déjà connus pour cette plaque, repris du PV le plus récent */
+function priorsFrom(records, immat) {
+  var pl = plate(immat);
+  if (!pl) return null;
+  var hits = (records || []).filter(function (r) { return plate(r.immat) === pl; });
+  if (!hits.length) return null;
+  hits.sort(function (a, b) {
+    return String(b.finishedAt || b.createdAt || '').localeCompare(String(a.finishedAt || a.createdAt || ''));
+  });
+  var src = hits[0];
+  if (!src.damages || !src.damages.length) return { src: src, damages: [] };
+  return {
+    src: src,
+    damages: src.damages.map(function (d, i) {
+      return {
+        id: 'p' + i + '_' + src.id,
+        view: d.view, x: d.x, y: d.y, label: d.label, note: d.note,
+        photos: [], prior: true,
+        priorRef: d.priorRef || src.id,
+        priorDate: d.priorDate || src.date
+      };
+    })
+  };
 }
 
 /* =========================================================
@@ -581,9 +650,9 @@ Doc.prototype.addIndexed = function (im) {
 };
 
 /* marqueur de dommage dessiné en vectoriel (net à toutes les échelles) */
-Doc.prototype.marker = function (cx, cy, r, label) {
+Doc.prototype.marker = function (cx, cy, r, label, colour) {
   var k = 0.5523 * r, s = 'q\n';
-  var f = this.rgb('#C0342F'), wq = this.rgb('#FFFFFF');
+  var f = this.rgb(colour || '#C0342F'), wq = this.rgb('#FFFFFF');
   s += f[0].toFixed(3) + ' ' + f[1].toFixed(3) + ' ' + f[2].toFixed(3) + ' rg\n';
   s += wq[0].toFixed(3) + ' ' + wq[1].toFixed(3) + ' ' + wq[2].toFixed(3) + ' RG\n';
   s += (r * 0.22).toFixed(2) + ' w\n';
@@ -820,11 +889,13 @@ function valColor(v) {
   if (v === 'OUI' || v === 'BON') return C.ok;
   if (v === 'NON' || v === 'MAUVAIS') return C.bad;
   if (v === 'MOYEN') return C.warn;
+  if (v === 'N/A') return C.soft;
   return C.ink;
 }
 
 function pvFileName(pv) {
-  var t = { recuperation: 'PVRecuperation', livraison: 'PVLivraison', lavage: 'PVCheckLavage' }[pv.type];
+  var t = { recuperation: 'PVRecuperation', livraison: 'PVLivraison', lavage: 'PVCheckLavage',
+            recuperationSite: 'PVRecuperationSite', livraisonSite: 'PVLivraisonSite' }[pv.type];
   return t + '_' + (plate(pv.immat) || 'SANSIMMAT').replace(/-/g, '') + '_' + fr(pv.date).replace(/\//g, '') + '.pdf';
 }
 
@@ -927,7 +998,8 @@ function buildPdf(pv) {
         d.image(d.addIndexed(im), x + 3, y + 3, w - 6, h - 6);
         pv.damages.forEach(function (dm) {
           if (dm.view !== key) return;
-          d.marker(x + 3 + dm.x / 100 * (w - 6), y + 3 + dm.y / 100 * (h - 6), Math.max(5.4, w * 0.026), dm.n);
+          d.marker(x + 3 + dm.x / 100 * (w - 6), y + 3 + dm.y / 100 * (h - 6),
+            Math.max(5.4, w * 0.026), dm.n, dm.prior ? '#B26A05' : '#C0342F');
         });
       } else if (im) {
         d.image(d.addImage(im), x + 3, y + 3, w - 6, h - 6);
@@ -950,23 +1022,36 @@ function buildPdf(pv) {
     drawView('droit', M + gw + 8, d.y, gw, sideH);
     d.y += sideH + 14;
 
-    /* dommages */
-    ensure(30);
-    d.rect(M, d.y, CW, 20, C.bg);
-    d.text(M + 9, d.y + 5.6, 'Dommages relevés', { size: 9, bold: true, color: C.ink });
-    d.text(R - 9, d.y + 5.6, pv.damages.length ? pv.damages.length + ' marqueur(s)' : 'Aucun dommage', { size: 9, bold: true, color: pv.damages.length ? C.bad : C.ok, align: 'right' });
-    d.y += 20;
-    pv.damages.forEach(function (dm, i) {
-      ensure(20);
-      d.rect(M, d.y, CW, 19, i % 2 ? C.bg2 : '#FFFFFF', C.line, 0.5);
-      d.rect(M, d.y, 2.6, 19, C.bad);
-      d.text(M + 10, d.y + 5.4, dm.n + '.  ' + dm.label, { size: 8.8, bold: true, color: C.ink, max: CW * 0.44 });
-      var lv = viewOf(dm.view).l;
-      d.text(M + CW * 0.52, d.y + 5.6, lv, { size: 8.2, color: C.mid, max: CW * 0.2 });
-      d.text(R - 9, d.y + 5.6, dm.note ? dm.note : '—', { size: 8.2, color: C.mid, align: 'right', max: CW * 0.24 });
-      d.y += 19;
-    });
-    d.y += 12;
+    /* dommages : antérieurs puis nouveaux */
+    var priors = pv.damages.filter(function (x) { return x.prior; });
+    var fresh = pv.damages.filter(function (x) { return !x.prior; });
+
+    function dmgTable(title, list, colour, empty) {
+      ensure(30);
+      d.rect(M, d.y, CW, 20, C.bg);
+      d.text(M + 9, d.y + 5.6, title, { size: 9, bold: true, color: C.ink, max: CW * 0.62 });
+      d.text(R - 9, d.y + 5.6, list.length ? list.length + ' marqueur(s)' : empty,
+        { size: 9, bold: true, color: list.length ? colour : C.ok, align: 'right' });
+      d.y += 20;
+      list.forEach(function (dm, i) {
+        ensure(20);
+        d.rect(M, d.y, CW, 19, i % 2 ? C.bg2 : '#FFFFFF', C.line, 0.5);
+        d.rect(M, d.y, 2.6, 19, colour);
+        d.text(M + 10, d.y + 5.4, dm.n + '.  ' + dm.label, { size: 8.8, bold: true, color: C.ink, max: CW * 0.42 });
+        d.text(M + CW * 0.50, d.y + 5.6, viewOf(dm.view).l, { size: 8.2, color: C.mid, max: CW * 0.18 });
+        var right = dm.prior
+          ? (dm.note ? dm.note + ' — ' : '') + 'PV du ' + fr(dm.priorDate)
+          : (dm.note || '—');
+        d.text(R - 9, d.y + 5.6, right, { size: 8.2, color: C.mid, align: 'right', max: CW * 0.3 });
+        d.y += 19;
+      });
+      d.y += 12;
+    }
+
+    if (pv.priorFrom) {
+      dmgTable('Dommages déjà relevés (PV du ' + fr(pv.priorFrom.date) + ')', priors, C.warn, 'Aucun');
+    }
+    dmgTable(pv.priorFrom ? 'Nouveaux dommages relevés' : 'Dommages relevés', fresh, C.bad, 'Aucun dommage');
 
     if (pv.reco && pv.reco.trim()) {
       label('Recommandation changement de pièces');
@@ -981,12 +1066,24 @@ function buildPdf(pv) {
     });
     d.y += 10;
 
+    sec('Documents de bord', 90);
+    DOCS.forEach(function (f, i) { kv(f.l, (pv.docs || {})[f.k] || '—', i, valColor((pv.docs || {})[f.k])); });
+    d.y += 10;
+
     sec('Kit sécurité', 90);
     SECU.forEach(function (f, i) { kv(f.l, pv.secu[f.k] || '—', i, valColor(pv.secu[f.k])); });
     d.y += 10;
 
     sec('État des pneus', 72);
     PNEUS.forEach(function (f, i) { kv(f.l, pv.pneus[f.k] || '—', i, valColor(pv.pneus[f.k])); });
+    d.y += 10;
+
+    sec('État des consommables', 90);
+    USURE.forEach(function (f, i) { kv(f.l, (pv.usure || {})[f.k] || '—', i, valColor((pv.usure || {})[f.k])); });
+    d.y += 10;
+
+    sec('Propreté du véhicule', 72);
+    PROPRETE.forEach(function (f, i) { kv(f.l, (pv.proprete || {})[f.k] || '—', i, valColor((pv.proprete || {})[f.k])); });
     d.y += 10;
 
     /* ---------- TRAVAUX ---------- */
@@ -1007,16 +1104,18 @@ function buildPdf(pv) {
     }
 
     /* ---------- SATISFACTION ---------- */
+    if (!TYPES[pv.type].sansClient) {
     sec('Satisfaction client', 130);
     var sx = d.W / 2 - 4 * 15;
     for (var s = 1; s <= 5; s++) d.star(sx + (s - 1) * 30, d.y + 12, 11, s <= pv.note);
     d.text(d.W / 2, d.y + 30, pv.note + '/5 — ' + (NOTE_LABEL[pv.note] || ''), { size: 10, bold: true, color: C.ink, align: 'center' });
     d.y += 48;
     if (pv.noteComment && pv.noteComment.trim()) para('« ' + pv.noteComment.trim() + ' »', { accent: C.cyan, color: C.mid });
+    }
 
     /* ---------- PHOTOS ---------- */
     var photos = [];
-    pv.damages.forEach(function (dm) { (dm.photos || []).forEach(function (p) { photos.push({ d: dm, p: p }); }); });
+    fresh.forEach(function (dm) { (dm.photos || []).forEach(function (p) { photos.push({ d: dm, p: p }); }); });
     if (photos.length) {
       var pw = (CW - 10) / 2, ph = pw * 0.72;
       sec('Photos des dommages (' + photos.length + ')', ph + 76);
@@ -1034,16 +1133,30 @@ function buildPdf(pv) {
     }
 
     /* ---------- SIGNATURES ---------- */
-    sec('Signatures', 210);
-    var sw = (CW - 14) / 2, sh = 76;
-    [[imgs.sc, 'Signature du client', 0], [imgs.sd, 'Driver : ' + pv.driver, 1]].forEach(function (p) {
-      var x = M + p[2] * (sw + 14);
-      d.rect(x, d.y, sw, sh, '#FFFFFF', C.line, 0.7);
-      if (p[0]) d.image(d.addImage(p[0]), x + 4, d.y + 4, sw - 8, sh - 8);
-      d.line(x, d.y + sh + 2, x + sw, d.y + sh + 2, C.navy, 1.1);
-      d.text(x + sw / 2, d.y + sh + 8, p[1], { size: 8, color: C.mid, align: 'center', max: sw });
-    });
-    d.y += sh + 26;
+    sec('Signature' + (TYPES[pv.type].sansClient ? '' : 's'), 210);
+    var sh = 76;
+    if (TYPES[pv.type].sansClient) {
+      var sw1 = CW * 0.52, sx1 = M + (CW - sw1) / 2;
+      d.rect(sx1, d.y, sw1, sh, '#FFFFFF', C.line, 0.7);
+      if (imgs.sd) d.image(d.addImage(imgs.sd), sx1 + 4, d.y + 4, sw1 - 8, sh - 8);
+      d.line(sx1, d.y + sh + 2, sx1 + sw1, d.y + sh + 2, C.navy, 1.1);
+      d.text(sx1 + sw1 / 2, d.y + sh + 8, 'Driver : ' + pv.driver, { size: 8, color: C.mid, align: 'center', max: sw1 });
+      d.text(sx1 + sw1 / 2, d.y + sh + 19, 'PV établi sur site, sans interlocuteur présent', { size: 7.4, color: C.soft, align: 'center', max: sw1 });
+      d.y += sh + 34;
+    } else {
+      var sw = (CW - 14) / 2;
+      [[imgs.sc, 'Signature du client', 0], [imgs.sd, 'Driver : ' + pv.driver, 1]].forEach(function (pp) {
+        var x = M + pp[2] * (sw + 14);
+        d.rect(x, d.y, sw, sh, '#FFFFFF', C.line, 0.7);
+        if (pp[0]) d.image(d.addImage(pp[0]), x + 4, d.y + 4, sw - 8, sh - 8);
+        d.line(x, d.y + sh + 2, x + sw, d.y + sh + 2, C.navy, 1.1);
+        d.text(x + sw / 2, d.y + sh + 8, pp[1], { size: 8, color: C.mid, align: 'center', max: sw });
+        if (pp[2] === 0 && pv.clientCode && pv.clientCode.trim()) {
+          d.text(x + sw / 2, d.y + sh + 19, 'Code employé : ' + pv.clientCode.trim(), { size: 7.8, bold: true, color: C.ink, align: 'center', max: sw });
+        }
+      });
+      d.y += sh + 34;
+    }
     ensure(30);
     d.text(d.W / 2, d.y, 'Document généré électroniquement — ' + COMPANY.name, { size: 7.6, color: C.soft, align: 'center' });
     d.text(d.W / 2, d.y + 11, 'Généré le ' + new Date().toLocaleString('fr-FR'), { size: 7.6, color: C.soft, align: 'center' });
@@ -1088,12 +1201,20 @@ function field(k, label, opts) {
 }
 
 /* ---------- écrans ---------- */
+function choiceBtn(key, sub, path) {
+  var t = TYPES[key];
+  return '<button class="choice" data-new="' + key + '" type="button">' +
+    '<span class="ic"><svg viewBox="0 0 24 24"><path d="' + path + '"/></svg></span>' +
+    '<span class="tx"><b>' + esc(t.label) + '</b><span>' + esc(sub) + '</span></span>' +
+    '<span class="go">\u203A</span></button>';
+}
+
+var IC_REC = 'M9 17H5a2 2 0 0 1-2-2V9m0 0 4-4m-4 4h13a5 5 0 0 1 0 10h-2';
+var IC_LIV = 'M3 7h11v10H3zM14 10h4l3 3v4h-7zM7.5 20a1.8 1.8 0 1 0 0-3.6 1.8 1.8 0 0 0 0 3.6M17.5 20a1.8 1.8 0 1 0 0-3.6 1.8 1.8 0 0 0 0 3.6';
+var IC_LAV = 'M4 12a8 8 0 0 1 16 0M12 3v2M6 21c0-2 1.5-3 3-3s3 1 3 3 1.5 3 3 3M8 12v4M12 12v6M16 12v4';
+var IC_SITE = 'M4 21V9l8-6 8 6v12M9 21v-6h6v6M12 12h.01';
+
 function screenHome() {
-  var items = [
-    ['recuperation', 'Constat à la prise en charge du véhicule chez le client', 'M9 17H5a2 2 0 0 1-2-2V9m0 0 4-4m-4 4h13a5 5 0 0 1 0 10h-2'],
-    ['livraison', 'Constat à la restitution du véhicule au client', 'M3 7h11v10H3zM14 10h4l3 3v4h-7zM7.5 20a1.8 1.8 0 1 0 0-3.6 1.8 1.8 0 0 0 0 3.6M17.5 20a1.8 1.8 0 1 0 0-3.6 1.8 1.8 0 0 0 0 3.6'],
-    ['lavage', 'Contrôle après lavage vapeur et prestations atelier', 'M4 12a8 8 0 0 1 16 0M12 3v2M6 21c0-2 1.5-3 3-3s3 1 3 3 1.5 3 3 3M8 12v4M12 12v6M16 12v4']
-  ];
   var lid = lastSavedId(), lrec = lid ? HIST.filter(function (r) { return r.id === lid; })[0] : null;
   var banner = lrec ? '<div class="card" style="border-left:4px solid var(--ok);margin-top:16px">' +
     '<div style="display:flex;align-items:center;gap:12px">' +
@@ -1102,17 +1223,19 @@ function screenHome() {
     '<div style="font-size:13px;color:var(--text-2)">' + esc(TYPES[lrec.type].label) + ' &middot; ' + esc(plate(lrec.immat)) + '</div></div>' +
     '<button class="dl" data-dl="' + esc(lrec.id) + '" type="button">PDF</button></div>' +
     '<button class="btn ghost" style="width:100%;margin-top:10px" data-act="mail-last" type="button">Envoyer par email</button></div>' : '';
+
   return '<div class="hero">' +
     '<div class="eyebrow">' + esc(COMPANY.name) + '</div>' +
     '<h1>Quel procès-verbal<br>établissez-vous&nbsp;?</h1>' +
-    '<p>Sélectionnez le type de PV. Le formulaire s\'adapte automatiquement et le PDF est généré à la fin, signatures comprises.</p></div>' + banner +
-    items.map(function (it) {
-      var t = TYPES[it[0]];
-      return '<button class="choice" data-new="' + it[0] + '" type="button">' +
-        '<span class="ic"><svg viewBox="0 0 24 24"><path d="' + it[2] + '"/></svg></span>' +
-        '<span class="tx"><b>' + esc(t.label) + '</b><span>' + esc(it[1]) + '</span></span>' +
-        '<span class="go">›</span></button>';
-    }).join('') +
+    '<p>Sélectionnez le type de PV. Le formulaire s\'adapte automatiquement et le PDF est généré à la fin, signatures comprises.</p></div>' +
+    banner +
+    '<div class="grouphead">En présence du client</div>' +
+    choiceBtn('recuperation', 'Constat à la prise en charge du véhicule chez le client', IC_REC) +
+    choiceBtn('livraison', 'Constat à la restitution du véhicule au client', IC_LIV) +
+    choiceBtn('lavage', 'Contrôle après lavage vapeur et prestations atelier', IC_LAV) +
+    '<div class="grouphead">Sur site, sans client</div>' +
+    choiceBtn('recuperationSite', 'Véhicule récupéré sur un site, sans interlocuteur présent', IC_SITE) +
+    choiceBtn('livraisonSite', 'Véhicule déposé sur un site, sans interlocuteur présent', IC_SITE) +
     '<div class="card" style="margin-top:18px"><h2>Historique</h2>' +
     (HIST.length
       ? '<p style="margin:0 0 12px;color:var(--text-2);font-size:14px">' + HIST.length + ' PV enregistré' + (HIST.length > 1 ? 's' : '') + ' par l\'équipe.</p>' +
@@ -1144,7 +1267,6 @@ function statusCard() {
     '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">' +
     '<span class="pill ' + pillCls + '">' + esc(st.title) + '</span></div>' +
     '<div style="font-size:13px;color:var(--text-2);word-break:break-word">' + esc(st.text) + '</div>' +
-    (st.code ? '<button class="btn primary" style="width:100%;margin-top:12px" data-act="code" type="button">Saisir le code d\'équipe</button>' : '') +
     (st.retry ? '<button class="btn ghost" style="width:100%;margin-top:12px" data-act="sync" type="button">Réessayer maintenant</button>' : '') +
     '</div>';
 }
@@ -1170,8 +1292,10 @@ function screenStep1() {
 
 function screenStep2() {
   return '<div class="page-h"><h1>État du véhicule</h1><p>Touchez le schéma à l\'endroit du dommage pour ajouter un marqueur.</p></div>' +
+    priorBanner() +
     '<div class="card"><h2>Schéma du véhicule</h2>' +
-    '<div class="hintbar">Une photo est obligatoire pour chaque dommage signalé.</div>' +
+    '<div class="hintbar">Une photo est obligatoire pour chaque nouveau dommage signalé.</div>' +
+    legendHtml() +
     '<div class="views">' + VIEWS.map(function (v) {
       return '<div class="view" data-view="' + v.k + '">' +
         '<span class="vlabel">' + esc(v.l) + '</span>' +
@@ -1184,7 +1308,42 @@ function screenStep2() {
     '<textarea data-f="reco" placeholder="Ex. Changement pare-choc avant, plaquettes de frein…">' + esc(S.reco) + '</textarea></div></div>';
 }
 
+function priorBanner() {
+  var n = S.damages.filter(function (d) { return d.prior; }).length;
+  if (!S.priorFrom) return '';
+  if (!n) {
+    return '<div class="card" style="border-left:4px solid var(--ok)"><h2>Historique du véhicule</h2>' +
+      '<div style="font-size:13.5px;color:var(--text-2)">Aucun dommage n\'était relevé sur ' + esc(plate(S.immat)) +
+      ' au PV du ' + esc(fr(S.priorFrom.date)) + '.</div></div>';
+  }
+  return '<div class="card" style="border-left:4px solid var(--warn)"><h2>Dommages déjà connus</h2>' +
+    '<div style="font-size:13.5px;color:var(--text-2)">' + n + ' dommage' + (n > 1 ? 's' : '') +
+    ' repris du PV du ' + esc(fr(S.priorFrom.date)) + ' (' + esc(TYPES[S.priorFrom.type].short) + ', ' + esc(S.priorFrom.driver) + ').' +
+    ' Ils apparaissent en orange sur le schéma. N\'ajoutez en rouge que ce qui est nouveau.</div></div>';
+}
+
+function legendHtml() {
+  if (!S.damages.some(function (d) { return d.prior; })) return '';
+  return '<div class="legend">' +
+    '<span><i class="sw prior"></i>Dommage antérieur</span>' +
+    '<span><i class="sw new"></i>Nouveau dommage</span></div>';
+}
+
 function dmgCard(d, i) {
+  if (d.prior) {
+    return '<div class="dmg prior" data-dmg="' + d.id + '">' +
+      '<div class="dmg-h"><span class="num prior">' + d.n + '</span><b>' + esc(d.label) + '</b>' +
+      '<span class="where">' + esc(viewOf(d.view).l) + '</span>' +
+      '<button class="linkbtn" data-rm="' + d.id + '" type="button">Réparé</button></div>' +
+      '<div style="font-size:12.5px;color:var(--text-2)">' +
+      (d.note ? esc(d.note) + ' &middot; ' : '') +
+      'relevé le ' + esc(fr(d.priorDate)) + ' &middot; réf. ' + esc(d.priorRef) +
+      '</div></div>';
+  }
+  return dmgCardNew(d, i);
+}
+
+function dmgCardNew(d, i) {
   return '<div class="dmg' + (d.photos.length ? '' : ' need') + '" data-dmg="' + d.id + '">' +
     '<div class="dmg-h"><span class="num">' + d.n + '</span><b>' + esc(d.label) + '</b>' +
     '<span class="where">' + esc(viewOf(d.view).l) + '</span>' +
@@ -1208,15 +1367,26 @@ function renderDmgList() {
     : '<div class="empty">Aucun dommage signalé.<br>Touchez le schéma ci-dessus pour en ajouter un.</div>';
 }
 
+function rows(list, storeName) {
+  return list.map(function (f) { return f.t === 'bool' ? boolRow(f, storeName) : segRow(f, storeName); }).join('');
+}
+
 function screenStep3() {
-  return '<div class="page-h"><h1>Équipements et pneus</h1><p>Tous les champs sont obligatoires.</p></div>' +
+  return '<div class="page-h"><h1>Équipements et documents</h1><p>Tous les champs sont obligatoires.</p></div>' +
     '<div class="card"><h2>Équipements</h2>' +
     '<div class="f" data-fw="km" style="margin-bottom:6px"><label>Kilométrage<span class="req">*</span></label>' +
     '<input data-e="km" type="number" inputmode="numeric" class="mono" value="' + esc(S.equip.km || '') + '" placeholder="52000"><span class="msg">Champ obligatoire</span></div>' +
-    EQUIP.slice(1).map(function (f) { return f.t === 'bool' ? boolRow(f, 'equip') : segRow(f, 'equip'); }).join('') +
+    rows(EQUIP.slice(1), 'equip') +
     '</div>' +
-    '<div class="card"><h2>Kit sécurité</h2>' + SECU.map(function (f) { return boolRow(f, 'secu'); }).join('') + '</div>' +
-    '<div class="card"><h2>État des pneus</h2>' + PNEUS.map(function (f) { return segRow(f, 'pneus'); }).join('') + '</div>';
+    '<div class="card"><h2>Documents de bord</h2>' + rows(DOCS, 'docs') + '</div>' +
+    '<div class="card"><h2>Kit sécurité</h2>' + rows(SECU, 'secu') + '</div>';
+}
+
+function screenStep3b() {
+  return '<div class="page-h"><h1>Pneus, consommables et propreté</h1><p>Tous les champs sont obligatoires.</p></div>' +
+    '<div class="card"><h2>État des pneus</h2>' + rows(PNEUS, 'pneus') + '</div>' +
+    '<div class="card"><h2>État des consommables</h2>' + rows(USURE, 'usure') + '</div>' +
+    '<div class="card"><h2>Propreté du véhicule</h2>' + rows(PROPRETE, 'proprete') + '</div>';
 }
 
 function screenStep4() {
@@ -1236,11 +1406,26 @@ function travRows() {
   }).join('');
 }
 
+function sigBlock(who, label, hint) {
+  var signed = who === 'Client' ? S.sigClient : S.sigDriver;
+  return '<div class="card"><h2>' + esc(label) + '</h2>' +
+    '<div class="sigbox' + (signed ? ' signed' : '') + '" data-sig="' + who + '"><canvas></canvas><span class="ph">' + esc(hint) + '</span></div>' +
+    '<div class="sigfoot"><span>Obligatoire</span><button class="linkbtn" data-clear="' + who + '" type="button">Effacer</button></div>' +
+    (who === 'Client'
+      ? '<div class="f" style="margin-top:14px"><label>Code employé du signataire <span class="hint" style="text-transform:none;letter-spacing:0;font-weight:400">(si disponible)</span></label>' +
+        '<input data-f="clientCode" type="text" class="mono" value="' + esc(S.clientCode) + '" placeholder="Ex. 4821"></div>'
+      : '') +
+    '</div>';
+}
+
 function screenStep5() {
+  if (TYPES[S.type].sansClient) {
+    return '<div class="page-h"><h1>Signature du driver</h1><p>Aucun client n\'est présent sur site : seule votre signature est requise.</p></div>' +
+      '<div class="note" style="margin:0 0 14px">Ce PV est établi sans interlocuteur. Les constats et photos de l\'étape 2 font foi.</div>' +
+      sigBlock('Driver', 'Signature du driver', (S.driver || 'Driver') + ', signez ici');
+  }
   return '<div class="page-h"><h1>Signatures et satisfaction</h1><p>À remplir avec le client, véhicule sous les yeux.</p></div>' +
-    '<div class="card"><h2>Signature du client</h2>' +
-    '<div class="sigbox' + (S.sigClient ? ' signed' : '') + '" data-sig="Client"><canvas></canvas><span class="ph">Signez ici avec le doigt</span></div>' +
-    '<div class="sigfoot"><span>Obligatoire</span><button class="linkbtn" data-clear="Client" type="button">Effacer</button></div></div>' +
+    sigBlock('Client', 'Signature du client', 'Signez ici avec le doigt') +
     '<div class="card"><h2>Note de la prestation</h2>' +
     '<div class="stars" id="stars">' + [1, 2, 3, 4, 5].map(function (n) {
       return '<button type="button" data-star="' + n + '" class="' + (n <= S.note ? 'on' : '') + '" aria-label="' + n + ' sur 5"><svg viewBox="0 0 24 24"><path d="M12 2.6l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.4 6.2 20.5l1.1-6.5L2.6 9.4l6.5-.9z"/></svg></button>';
@@ -1248,14 +1433,13 @@ function screenStep5() {
     '<div class="starlabel" id="starLabel">' + (S.note ? esc(S.note + '/5 — ' + NOTE_LABEL[S.note]) : 'Note à donner par le client') + '</div>' +
     '<div class="f" style="margin-top:14px"><label>Commentaire du client <span class="hint" style="text-transform:none;letter-spacing:0;font-weight:400">(facultatif)</span></label>' +
     '<textarea data-f="noteComment" placeholder="Ex. driver ponctuel et véhicule impeccable">' + esc(S.noteComment) + '</textarea></div></div>' +
-    '<div class="card"><h2>Signature du driver</h2>' +
-    '<div class="sigbox' + (S.sigDriver ? ' signed' : '') + '" data-sig="Driver"><canvas></canvas><span class="ph">' + esc(S.driver || 'Driver') + ', signez ici</span></div>' +
-    '<div class="sigfoot"><span>Obligatoire</span><button class="linkbtn" data-clear="Driver" type="button">Effacer</button></div></div>';
+    sigBlock('Driver', 'Signature du driver', (S.driver || 'Driver') + ', signez ici');
 }
 
 function screenDone() {
   var t = TYPES[S.type];
-  var nd = S.damages.length;
+  var nd = S.damages.filter(function (d) { return !d.prior; }).length;
+  var np = S.damages.filter(function (d) { return d.prior; }).length;
   return '<div class="page-h" style="text-align:center;padding-top:18px">' +
     '<div style="width:58px;height:58px;border-radius:50%;background:var(--ok-bg);color:var(--ok);display:grid;place-items:center;margin:0 auto 14px;font-size:28px">✓</div>' +
     '<h1>PV finalisé</h1><p>' + esc(t.label) + ' · ' + esc(plate(S.immat)) + '</p></div>' +
@@ -1264,8 +1448,10 @@ function screenDone() {
     '<div><span>Driver</span><span>' + esc(S.driver) + '</span></div>' +
     '<div><span>Mission n°</span><span class="mono">' + esc(S.mission) + '</span></div>' +
     '<div><span>Client</span><span>' + esc(S.client) + '</span></div>' +
-    '<div><span>Dommages relevés</span><span>' + (nd ? '<span class="pill bad">' + nd + '</span>' : '<span class="pill ok">Aucun</span>') + '</span></div>' +
-    '<div><span>Satisfaction</span><span>' + S.note + '/5</span></div>' +
+    '<div><span>Dommages antérieurs</span><span>' + (np ? '<span class="pill warn">' + np + '</span>' : '<span class="pill ok">Aucun</span>') + '</span></div>' +
+    '<div><span>Nouveaux dommages</span><span>' + (nd ? '<span class="pill bad">' + nd + '</span>' : '<span class="pill ok">Aucun</span>') + '</span></div>' +
+    (TYPES[S.type].sansClient ? '' : '<div><span>Satisfaction</span><span>' + S.note + '/5</span></div>' +
+      (S.clientCode ? '<div><span>Code employé</span><span class="mono">' + esc(S.clientCode) + '</span></div>' : '')) +
     '<div><span>Référence</span><span class="mono">' + esc(S.id) + '</span></div>' +
     '</div></div>' +
     '<div class="card"><h2>Diffusion</h2>' +
@@ -1293,19 +1479,19 @@ function render() {
     $('bottomIn').innerHTML = '<button class="btn primary" data-go="home" type="button">Nouveau PV</button>';
   }
   else {
-    var steps = stepsFor(S.type), idx = steps.map(function (s) { return s.n; }).indexOf(step);
+    var steps = stepsFor(S.type), idx = stepIndex(S.type, step);
     rw.classList.remove('hide'); bt.classList.remove('hide');
     $('brandSub').textContent = TYPES[S.type].label + (S.immat ? ' · ' + plate(S.immat) : '');
     $('rail').innerHTML = steps.map(function (s, i) { return '<div class="' + (i < idx ? 'done' : i === idx ? 'now' : '') + '"></div>'; }).join('');
     $('stepN').textContent = 'Étape ' + (idx + 1) + ' / ' + steps.length;
     $('stepT').textContent = steps[idx].t;
-    v.innerHTML = ({ 1: screenStep1, 2: screenStep2, 3: screenStep3, 4: screenStep4, 5: screenStep5 })[step]();
+    v.innerHTML = ({ infos: screenStep1, etat: screenStep2, equip: screenStep3, usure: screenStep3b, travaux: screenStep4, fin: screenStep5 })[step]();
     var last = idx === steps.length - 1;
     $('bottomIn').innerHTML =
       '<button class="btn ghost" data-nav="prev" type="button">' + (idx === 0 ? 'Annuler' : 'Retour') + '</button>' +
       '<button class="btn primary" data-nav="next" type="button">' + (last ? 'Finaliser le PV' : 'Continuer') + '</button>';
-    if (step === 2) { renderDmgList(); paintMarkers(); }
-    if (step === 5) initSignatures();
+    if (step === 'etat') { renderDmgList(); paintMarkers(); }
+    if (step === 'fin') initSignatures();
   }
   window.scrollTo(0, 0);
 }
@@ -1313,14 +1499,34 @@ function render() {
 function go(s) { screen = s; render(); }
 
 function nextStep(dir) {
-  var steps = stepsFor(S.type), idx = steps.map(function (s) { return s.n; }).indexOf(step);
+  var steps = stepsFor(S.type), idx = stepIndex(S.type, step);
   if (dir < 0) {
     if (idx === 0) { if (confirm('Abandonner ce PV ? Les informations saisies seront perdues.')) { S = null; go('home'); } return; }
-    step = steps[idx - 1].n; render(); return;
+    step = steps[idx - 1].k; render(); return;
   }
   if (!validate()) return;
   if (idx === steps.length - 1) { finalize(); return; }
-  step = steps[idx + 1].n; render();
+  if (step === 'infos') { goStep2WithPriors(); return; }
+  step = steps[idx + 1].k; render();
+}
+
+/* recherche des dommages déjà relevés sur cette plaque avant d'ouvrir l'étape 2 */
+function goStep2WithPriors() {
+  var pl = plate(S.immat);
+  if (S.priorFrom && S.priorFrom.immat === pl) { step = 'etat'; render(); return; }
+  busy(true, 'Recherche des dommages déjà relevés…');
+  loadPriors(pl, function (found) {
+    busy(false);
+    S.damages = S.damages.filter(function (d) { return !d.prior; });
+    S.priorFrom = null;
+    if (found) {
+      S.priorFrom = { immat: pl, id: found.src.id, date: found.src.date, type: found.src.type, driver: found.src.driver };
+      S.damages = found.damages.concat(S.damages);
+      renumber();
+      if (found.damages.length) toast(found.damages.length + ' dommage' + (found.damages.length > 1 ? 's' : '') + ' repris du PV du ' + fr(found.src.date));
+    }
+    step = 'etat'; render();
+  });
 }
 
 /* ---------- validation ---------- */
@@ -1336,7 +1542,7 @@ function validate() {
   $('formerr').classList.remove('on');
   var bad = [], i;
 
-  if (step === 1) {
+  if (step === 'infos') {
     ['date', 'driver', 'mission', 'immat', 'client', 'adresse'].forEach(function (k) {
       if (!String(S[k] || '').trim()) bad.push(document.querySelector('[data-fw="' + k + '"]'));
     });
@@ -1348,8 +1554,8 @@ function validate() {
     }
     return true;
   }
-  if (step === 2) {
-    var miss = S.damages.filter(function (d) { return !d.photos.length; });
+  if (step === 'etat') {
+    var miss = S.damages.filter(function (d) { return !d.prior && !d.photos.length; });
     if (miss.length) {
       miss.forEach(function (d) { var n = document.querySelector('[data-dmg="' + d.id + '"]'); if (n) n.classList.add('need'); });
       var f = document.querySelector('[data-dmg="' + miss[0].id + '"]');
@@ -1360,16 +1566,29 @@ function validate() {
     }
     return true;
   }
-  if (step === 3) {
+  function checkRows(list, storeName) {
+    list.forEach(function (f) {
+      if (!S[storeName][f.k]) bad.push(document.querySelector('[data-store="' + storeName + '"][data-row="' + f.k + '"]'));
+    });
+  }
+  if (step === 'equip') {
     if (!String(S.equip.km || '').trim()) bad.push(document.querySelector('[data-fw="km"]'));
-    EQUIP.slice(1).forEach(function (f) { if (!S.equip[f.k]) bad.push(document.querySelector('[data-store="equip"][data-row="' + f.k + '"]')); });
-    SECU.forEach(function (f) { if (!S.secu[f.k]) bad.push(document.querySelector('[data-store="secu"][data-row="' + f.k + '"]')); });
-    PNEUS.forEach(function (f) { if (!S.pneus[f.k]) bad.push(document.querySelector('[data-store="pneus"][data-row="' + f.k + '"]')); });
+    checkRows(EQUIP.slice(1), 'equip');
+    checkRows(DOCS, 'docs');
+    checkRows(SECU, 'secu');
     bad = bad.filter(Boolean);
-    if (bad.length) return fail('Renseignez tous les équipements avant de continuer.', bad);
+    if (bad.length) return fail('Renseignez tous les équipements et documents avant de continuer.', bad);
     return true;
   }
-  if (step === 4) {
+  if (step === 'usure') {
+    checkRows(PNEUS, 'pneus');
+    checkRows(USURE, 'usure');
+    checkRows(PROPRETE, 'proprete');
+    bad = bad.filter(Boolean);
+    if (bad.length) return fail('Renseignez l\'état des pneus, consommables et propreté.', bad);
+    return true;
+  }
+  if (step === 'travaux') {
     (TYPES[S.type].travaux || []).forEach(function (k) {
       var f = TRAVAUX[k];
       if (f.dep && S.travaux[f.dep] !== 'OUI') return;
@@ -1379,7 +1598,11 @@ function validate() {
     if (bad.length) return fail('Renseignez toutes les prestations.', bad);
     return true;
   }
-  if (step === 5) {
+  if (step === 'fin') {
+    if (TYPES[S.type].sansClient) {
+      if (!S.sigDriver) return fail('La signature du driver est obligatoire.', [document.querySelector('[data-sig="Driver"]')]);
+      return true;
+    }
     if (!S.sigClient) return fail('La signature du client est obligatoire.', [document.querySelector('[data-sig="Client"]')]);
     if (!S.note) { var fe2 = $('formerr'); fe2.textContent = 'La note de la prestation doit être donnée par le client.'; fe2.classList.add('on'); $('stars').scrollIntoView({ block: 'center', behavior: 'smooth' }); return false; }
     if (!S.sigDriver) return fail('La signature du driver est obligatoire.', [document.querySelector('[data-sig="Driver"]')]);
@@ -1419,7 +1642,10 @@ function initSignatures() {
 }
 
 /* ---------- dommages ---------- */
-function renumber() { S.damages.forEach(function (d, i) { d.n = i + 1; }); }
+function renumber() {
+  S.damages = sortDamages(S.damages);
+  S.damages.forEach(function (d, i) { d.n = i + 1; });
+}
 function addDamage(viewKey, xPct, yPct) {
   S.damages.push({ id: 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), view: viewKey, x: xPct, y: yPct, label: DMG_TYPES[0], note: '', photos: [] });
   renumber(); paintMarkers(); renderDmgList();
@@ -1432,7 +1658,7 @@ function paintMarkers() {
     vw.querySelectorAll('.mk').forEach(function (m) { m.remove(); });
     S.damages.filter(function (d) { return d.view === vw.dataset.view; }).forEach(function (d) {
       var m = document.createElement('span');
-      m.className = 'mk'; m.style.left = d.x + '%'; m.style.top = d.y + '%'; m.textContent = d.n;
+      m.className = 'mk' + (d.prior ? ' prior' : ''); m.style.left = d.x + '%'; m.style.top = d.y + '%'; m.textContent = d.n;
       vw.appendChild(m);
     });
   });
@@ -1508,14 +1734,13 @@ function mailPv(pv) {
    ---------------------------------------------------------
    RENSEIGNEZ CES DEUX LIGNES avant de mettre le fichier en ligne.
    Elles se trouvent dans Supabase : Project Settings > API
-   Le code d'équipe, lui, n'est PAS ici : il est saisi par le driver.
-   Voir supabase/01-acces-code-equipe.sql pour le définir en base.
    ========================================================= */
 var SUPABASE_URL = 'https://boqxyffsnufcynkprjfc.supabase.co';   /* ex. https://abcdefgh.supabase.co            */
 var SUPABASE_KEY = 'sb_publishable_lgDk-v5uC2jzAKOTOTH37g_EhyBOXR6';   /* clé publique : sb_publishable_... ou eyJ...  */
+var SUPABASE_TABLE = 'pv';
 /* ======================================================= */
 
-var syncState = { pending: 0, lastError: '', needCode: false };
+var syncState = { pending: 0, lastError: '' };
 
 function cloudOn() { return !!(SUPABASE_URL && SUPABASE_KEY); }
 /* accepte https://xxx.supabase.co comme https://xxx.supabase.co/rest/v1/ */
@@ -1545,46 +1770,30 @@ function storeLoad() {
   return h;
 }
 
-/* ---------- code d'équipe ----------
-   L'application n'accède plus directement à la table : elle appelle des
-   fonctions SQL qui vérifient d'abord le code. Le code n'est jamais dans
-   ce fichier — il est saisi par le driver et gardé sur son appareil. */
-function codeGet() { try { return localStorage.getItem('pvcheck-code') || ''; } catch (e) { return ''; } }
-function codeSet(c) { try { if (c) localStorage.setItem('pvcheck-code', c); else localStorage.removeItem('pvcheck-code'); } catch (e) { } }
-function codeOn() { return !!codeGet(); }
-function codeErr(msg) { var e = new Error(msg); e.badCode = true; return e; }
-
-function rpc(fn, body) {
-  return fetch(api('rpc/' + fn), {
-    method: 'POST',
-    headers: apiHeaders(),
-    body: JSON.stringify(body)
-  }).then(function (r) {
-    if (r.ok) return r.status === 204 ? null : r.json().catch(function () { return null; });
-    return r.text().then(function (t) {
-      /* code refusé : on l'oublie pour que le driver puisse le ressaisir */
-      if (/code_invalide/.test(t)) { codeSet(''); throw codeErr('Code d\'équipe refusé.'); }
-      throw new Error('HTTP ' + r.status + ' — ' + t.slice(0, 160));
-    });
-  });
-}
-
 function cloudInsert(rec) {
-  if (!codeOn()) return Promise.reject(codeErr('Code d\'équipe requis.'));
   var row = {
     ref: rec.id, type: rec.type, pv_date: rec.date,
     immat: plate(rec.immat), client: rec.client, driver: rec.driver,
     damages: rec.damages.length, note: rec.note, data: rec
   };
-  /* les doublons sont ignorés côté base (on conflict do nothing) */
-  return rpc('pv_enregistrer', { p_code: codeGet(), p_row: row }).then(function () { return true; });
+  return fetch(api(SUPABASE_TABLE), {
+    method: 'POST',
+    headers: apiHeaders({ 'Prefer': 'return=minimal' }),
+    body: JSON.stringify(row)
+  }).then(function (r) {
+    if (r.ok) return true;
+    if (r.status === 409) return true;   /* déjà enregistré : rien à refaire */
+    return r.text().then(function (t) { throw new Error('HTTP ' + r.status + ' — ' + t.slice(0, 160)); });
+  });
 }
 
 function cloudFetch() {
-  if (!codeOn()) return Promise.reject(codeErr('Code d\'équipe requis.'));
-  return rpc('pv_lister', { p_code: codeGet() }).then(function (rows) {
-    return (rows || []).filter(Boolean);
-  });
+  return fetch(api(SUPABASE_TABLE + '?select=data&order=created_at.desc&limit=400'), { headers: apiHeaders() })
+    .then(function (r) {
+      if (!r.ok) return r.text().then(function (t) { throw new Error('HTTP ' + r.status + ' — ' + t.slice(0, 160)); });
+      return r.json();
+    })
+    .then(function (rows) { return rows.map(function (x) { return x.data; }).filter(Boolean); });
 }
 
 /* fusionne la base centrale avec les PV locaux, sans perdre ceux en attente */
@@ -1653,9 +1862,6 @@ function storeStatus() {
   if (!cloudOn()) {
     return { tone: 'warn', title: 'Mode local', text: 'Les PV ne sont enregistrés que sur cet appareil. Renseignez SUPABASE_URL et SUPABASE_KEY en haut du fichier pour centraliser l\'historique.' };
   }
-  if (!codeOn()) {
-    return { tone: 'warn', title: 'Code d\'équipe requis', text: 'Saisissez le code de l\'équipe pour enregistrer les PV dans l\'historique partagé. Une seule fois sur cet appareil.', code: true };
-  }
   if (syncState.pending) {
     return { tone: 'warn', title: syncState.pending + ' PV en attente d\'envoi', text: 'Ils partiront automatiquement dès le retour du réseau.', retry: true };
   }
@@ -1668,8 +1874,32 @@ function storeStatus() {
 function storeRetry() {
   flushPending(function () {
     cloudFetch().then(function (remote) { mergeRemote(remote); render(); })
-      .catch(function (e) { syncState.lastError = e.message; render(); if (e.badCode) askCode(e.message); });
+      .catch(function (e) { syncState.lastError = e.message; render(); });
   });
+}
+
+/* dommages déjà relevés : la base d'abord, l'historique local en repli */
+function loadPriors(immat, cb) {
+  var local = priorsFrom(HIST, immat);
+  if (!cloudOn()) { cb(local); return; }
+  var q = 'pv?select=data&immat=eq.' + encodeURIComponent(plate(immat)) + '&order=created_at.desc&limit=12';
+  var done = false;
+  var timer = setTimeout(function () { if (!done) { done = true; cb(local); } }, 6000);
+  fetch(api(q), { headers: apiHeaders() })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (rows) {
+      if (done) return;
+      done = true; clearTimeout(timer);
+      if (!rows) { cb(local); return; }
+      var recs = rows.map(function (x) { return x.data; }).filter(Boolean);
+      var remote = priorsFrom(recs, immat);
+      if (!remote) { cb(local); return; }
+      if (!local) { cb(remote); return; }
+      var lt = String(local.src.finishedAt || local.src.createdAt || '');
+      var rt = String(remote.src.finishedAt || remote.src.createdAt || '');
+      cb(rt >= lt ? remote : local);
+    })
+    .catch(function () { if (!done) { done = true; clearTimeout(timer); cb(local); } });
 }
 
 /* =========================================================
@@ -1686,7 +1916,7 @@ document.addEventListener('click', function (e) {
   var t = e.target.closest('[data-new],[data-go],[data-nav],[data-dl],[data-act],[data-rm],[data-photo],[data-star],[data-clear],.seg button');
   if (!t) return;
 
-  if (t.dataset.new) { lastSavedId(null); S = newPV(t.dataset.new); step = 1; screen = 'step'; render(); return; }
+  if (t.dataset.new) { lastSavedId(null); S = newPV(t.dataset.new); step = 'infos'; screen = 'step'; render(); return; }
   if (t.dataset.go) {
     if (screen === 'step' && S && !confirm('Quitter ce PV ? Les informations saisies seront perdues.')) return;
     if (t.dataset.go === 'home' || screen === 'step') S = null;
@@ -1700,7 +1930,6 @@ document.addEventListener('click', function (e) {
     return;
   }
   if (t.dataset.act === 'pdf') { downloadPdf(S); return; }
-  if (t.dataset.act === 'code') { askCode(''); return; }
   if (t.dataset.act === 'sync') { if (typeof storeRetry === 'function') { toast('Synchronisation…'); storeRetry(); } return; }
   if (t.dataset.act === 'mail') { mailPv(S); return; }
   if (t.dataset.act === 'mail-last') {
@@ -1767,7 +1996,7 @@ document.addEventListener('change', function (e) {
 /* clic sur un schéma -> nouveau marqueur */
 document.addEventListener('click', function (e) {
   var vw = e.target.closest('.view');
-  if (!vw || screen !== 'step' || step !== 2) return;
+  if (!vw || screen !== 'step' || step !== 'etat') return;
   var r = vw.getBoundingClientRect();
   var x = (e.clientX - r.left) / r.width * 100, y = (e.clientY - r.top) / r.height * 100;
   if (x < 2 || x > 98 || y < 2 || y > 98) return;
@@ -1791,37 +2020,12 @@ $('filepick').addEventListener('change', function () {
   }).catch(function () { busy(false); toast('Photo illisible, réessayez'); });
 });
 
-window.addEventListener('resize', function () { if (screen === 'step' && step === 2) paintMarkers(); });
-
-/* ---------- fenêtre de saisie du code ---------- */
-function askCode(msg) {
-  var err = $('codeErr');
-  err.textContent = msg || '';
-  err.style.display = msg ? 'block' : 'none';
-  $('codeIn').value = '';
-  $('codeOv').classList.add('on');
-  setTimeout(function () { try { $('codeIn').focus(); } catch (e) { } }, 60);
-}
-function closeCode() { $('codeOv').classList.remove('on'); }
-
-$('codeOk').addEventListener('click', function () {
-  var c = String($('codeIn').value || '').trim();
-  if (!c) { askCode('Saisissez le code.'); return; }
-  codeSet(c);
-  closeCode();
-  toast('Vérification du code…');
-  storeRetry();
-});
-$('codeSkip').addEventListener('click', function () { closeCode(); render(); });
-$('codeIn').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); $('codeOk').click(); } });
+window.addEventListener('resize', function () { if (screen === 'step' && step === 'etat') paintMarkers(); });
 
 /* démarrage */
 HIST = storeLoad();
 render();
 storeBoot();
-/* premier lancement sur cet appareil : on demande le code tout de suite,
-   sans bloquer — un driver hors réseau doit pouvoir rédiger son PV. */
-if (cloudOn() && !codeOn()) askCode('');
 
 </script>
 </body>
