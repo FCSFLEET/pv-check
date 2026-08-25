@@ -52,6 +52,10 @@ légers tout en gardant des traits nets. Les marqueurs de dommage sont tracés e
   constituer l'historique de l'équipe. Les PV non synchronisés sont marqués « à envoyer » et
   repartent automatiquement au retour du réseau.
 
+L'accès à la base partagée est protégé par un **code d'équipe**, saisi une seule fois par appareil
+(voir « Accès » ci-dessous). Sans code, l'application reste pleinement utilisable : le PV se rédige,
+le PDF se génère, et l'envoi part dès que le code est renseigné.
+
 ---
 
 ## Configuration
@@ -78,9 +82,44 @@ var COMPANY = {
 };
 ```
 
+### Accès : le code d'équipe
+
+L'application est publique — n'importe qui peut ouvrir le lien, et la clé Supabase est lisible dans
+le code source, comme toute clé publiable. Ce qui protège la base, c'est un **code d'équipe** que le
+driver saisit à sa première ouverture et que son appareil mémorise ensuite définitivement. Pas de
+compte, pas de mot de passe individuel, rien à administrer.
+
+L'application n'accède donc plus directement à la table `pv`. Elle appelle deux fonctions
+`security definer` qui vérifient le code avant d'agir :
+
+| Fonction | Rôle |
+|----------|------|
+| `public.pv_enregistrer(p_code, p_row)` | enregistre un PV (les doublons sont ignorés) |
+| `public.pv_lister(p_code)` | renvoie les 400 derniers PV de l'équipe |
+
+Le code n'est **jamais** dans `index.html` : il est tapé par le driver et conservé dans le
+`localStorage` de son téléphone. En base, seule son empreinte bcrypt est stockée, dans le schéma
+`prive` que PostgREST n'expose pas.
+
+Pour définir ou changer le code :
+
+```sql
+select prive.definir_code('nouveau-code');
+```
+
+Les appareils qui ont l'ancien code se le verront refuser et le redemanderont automatiquement.
+Pour vérifier qu'un code est le bon : `select prive.code_ok('le-code');`
+
 ### Schéma de la base
 
-À exécuter dans l'éditeur SQL de Supabase :
+Les scripts se trouvent dans [`supabase/`](supabase/) et **doivent être exécutés dans cet ordre** :
+
+1. [`01-acces-code-equipe.sql`](supabase/01-acces-code-equipe.sql) — à passer **avant** de déployer.
+   Purement additif : la version en ligne continue de tourner pendant la bascule.
+2. [`02-fermer-insertion-anonyme.sql`](supabase/02-fermer-insertion-anonyme.sql) — à passer
+   **après** le déploiement, une fois qu'un vrai PV s'est bien enregistré. Ferme l'insertion directe.
+
+La table elle-même :
 
 ```sql
 create table if not exists public.pv (
@@ -96,30 +135,10 @@ create table if not exists public.pv (
   data        jsonb       not null,
   created_at  timestamptz not null default now()
 );
-
-create index if not exists pv_created_at_idx on public.pv (created_at desc);
-create index if not exists pv_immat_idx      on public.pv (immat);
-create index if not exists pv_driver_idx     on public.pv (driver);
-
-alter table public.pv enable row level security;
-
-drop policy if exists "pv_select_equipe" on public.pv;
-create policy "pv_select_equipe" on public.pv
-  for select to anon, authenticated using (true);
-
-drop policy if exists "pv_insert_equipe" on public.pv;
-create policy "pv_insert_equipe" on public.pv
-  for insert to anon, authenticated with check (true);
-
-create or replace view public.pv_liste as
-  select ref, pv_date, type, immat, client, driver, damages, note, created_at
-  from public.pv
-  order by created_at desc;
 ```
 
 Le PV complet est stocké dans la colonne `data` (jsonb) ; les autres colonnes sont extraites pour
-permettre le tri et la recherche. La vue `pv_liste` sert aux exports et à la consultation rapide
-sans charger les photos.
+permettre le tri et la recherche.
 
 > **Note :** aucune politique `delete` n'est définie — les PV ne peuvent pas être supprimés depuis
 > l'application, par conception.
