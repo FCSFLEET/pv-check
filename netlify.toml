@@ -1,0 +1,8 @@
+# Déploiement automatique depuis GitHub.
+# Chaque fusion sur « main » met le site en ligne, sans intervention.
+
+[build]
+  # Aucune étape de build : index.html est autonome et servi tel quel.
+  # Seul le contenu de site/ est publié — le README et les scripts SQL
+  # restent dans le dépôt sans être exposés sur le site public.
+  publish = "site"

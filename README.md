@@ -11,7 +11,7 @@ d'un PDF signé.
 ## Fonctionnement
 
 L'application est une **PWA mono-fichier** : tout (HTML, CSS, JavaScript, icônes, schémas des
-véhicules) tient dans `index.html`. Aucune étape de build, aucune dépendance à installer.
+véhicules) tient dans `site/index.html`. Aucune étape de build, aucune dépendance à installer.
 
 ### Types de PV
 
@@ -20,6 +20,12 @@ véhicules) tient dans `index.html`. Aucune étape de build, aucune dépendance 
 | **PV de récupération** | Constat à la prise en charge du véhicule chez le client |
 | **PV de livraison** | Constat à la restitution du véhicule au client |
 | **PV check-lavage** | Contrôle après lavage vapeur et prestations atelier |
+| **PV de récupération sur site** | Prise en charge sans client présent |
+| **PV de livraison sur site** | Restitution sans client présent |
+
+Les deux derniers sont marqués `sansClient` : le parcours saute la signature du client et la note
+de satisfaction, et propose à la place le **code employé du signataire** présent sur place, imprimé
+sur le PDF.
 
 Chaque type affiche son propre parcours d'étapes (les prestations atelier ne sont demandées que
 pour les PV de livraison et de check-lavage).
@@ -60,7 +66,7 @@ le PDF se génère, et l'envoi part dès que le code est renseigné.
 
 ## Configuration
 
-Les paramètres se trouvent en haut du bloc `<script>` de `index.html` :
+Les paramètres se trouvent en haut du bloc `<script>` de `site/index.html` :
 
 ```js
 var SUPABASE_URL   = 'https://<votre-projet>.supabase.co';
@@ -97,7 +103,7 @@ L'application n'accède donc plus directement à la table `pv`. Elle appelle deu
 | `public.pv_enregistrer(p_code, p_row)` | enregistre un PV (les doublons sont ignorés) |
 | `public.pv_lister(p_code)` | renvoie les 400 derniers PV de l'équipe |
 
-Le code n'est **jamais** dans `index.html` : il est tapé par le driver et conservé dans le
+Le code n'est **jamais** dans `site/index.html` : il est tapé par le driver et conservé dans le
 `localStorage` de son téléphone. En base, seule son empreinte bcrypt est stockée, dans le schéma
 `prive` que PostgREST n'expose pas.
 
@@ -147,14 +153,14 @@ permettre le tri et la recherche.
 
 ## Développement
 
-Aucun build. Pour travailler en local, servir le dossier :
+Aucun build. Pour travailler en local, servir le dossier du site :
 
 ```bash
-python3 -m http.server 8000
+python3 -m http.server 8000 --directory site
 ```
 
-puis ouvrir http://localhost:8000. Un simple double-clic sur `index.html` fonctionne aussi, mais
-passer par un serveur local reproduit mieux les conditions de production (service worker,
+puis ouvrir http://localhost:8000. Un simple double-clic sur `site/index.html` fonctionne aussi,
+mais passer par un serveur local reproduit mieux les conditions de production (service worker,
 permissions caméra).
 
 L'application est pensée **mobile d'abord** : la tester dans les outils développeur en mode
@@ -163,5 +169,15 @@ les événements tactiles.
 
 ## Déploiement
 
-Le site est hébergé sur **Netlify**. `index.html` étant autonome, un déploiement consiste à
-publier ce seul fichier à la racine du site.
+Le site est hébergé sur **Netlify**, connecté à ce dépôt. **Toute fusion sur `main` déclenche le
+déploiement automatiquement** — il n'y a rien à téléverser à la main.
+
+La configuration tient dans [`netlify.toml`](netlify.toml) : aucune commande de build, et seul le
+contenu de `site/` est publié. Le README et les scripts SQL restent donc dans le dépôt sans être
+exposés sur le site public.
+
+Pour vérifier qu'une mise en ligne correspond bien au dépôt :
+
+```bash
+diff <(curl -s https://pv-check-fcsfleet.netlify.app/) site/index.html && echo "en ligne = dépôt"
+```
