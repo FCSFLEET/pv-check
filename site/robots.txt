@@ -1,0 +1,4 @@
+# PV Check est un outil interne à FCS Fleet Services.
+# Rien ici n'a vocation à apparaître dans les moteurs de recherche.
+User-agent: *
+Disallow: /
