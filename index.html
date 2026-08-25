@@ -278,6 +278,16 @@ main{flex:1;padding:16px 16px 120px}
 
 <div class="toast" id="toast"></div>
 <div class="overlay" id="overlay"><div class="box"><div class="spin"></div><div id="ovText">Préparation du PDF…</div></div></div>
+<div class="overlay" id="codeOv"><div class="box" style="text-align:left">
+ <h2 style="margin:0 0 6px;font-size:17px">Code d'équipe</h2>
+ <p style="margin:0 0 14px;color:var(--text-2);font-size:13.5px">À saisir une seule fois sur cet appareil. Il permet d'enregistrer les PV dans l'historique partagé de l'équipe.</p>
+ <div class="f"><input id="codeIn" class="mono" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="Code à 6 chiffres"></div>
+ <div id="codeErr" style="display:none;color:var(--bad);font-size:13px;margin-top:8px"></div>
+ <div style="display:flex;gap:10px;margin-top:16px">
+  <button class="btn ghost" id="codeSkip" type="button">Plus tard</button>
+  <button class="btn primary" id="codeOk" type="button">Valider</button>
+ </div>
+</div></div>
 <input type="file" id="filepick" accept="image/*" capture="environment" class="hide">
 
 <script>
@@ -1134,6 +1144,7 @@ function statusCard() {
     '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">' +
     '<span class="pill ' + pillCls + '">' + esc(st.title) + '</span></div>' +
     '<div style="font-size:13px;color:var(--text-2);word-break:break-word">' + esc(st.text) + '</div>' +
+    (st.code ? '<button class="btn primary" style="width:100%;margin-top:12px" data-act="code" type="button">Saisir le code d\'équipe</button>' : '') +
     (st.retry ? '<button class="btn ghost" style="width:100%;margin-top:12px" data-act="sync" type="button">Réessayer maintenant</button>' : '') +
     '</div>';
 }
@@ -1497,13 +1508,14 @@ function mailPv(pv) {
    ---------------------------------------------------------
    RENSEIGNEZ CES DEUX LIGNES avant de mettre le fichier en ligne.
    Elles se trouvent dans Supabase : Project Settings > API
+   Le code d'équipe, lui, n'est PAS ici : il est saisi par le driver.
+   Voir supabase/01-acces-code-equipe.sql pour le définir en base.
    ========================================================= */
 var SUPABASE_URL = 'https://boqxyffsnufcynkprjfc.supabase.co';   /* ex. https://abcdefgh.supabase.co            */
 var SUPABASE_KEY = 'sb_publishable_lgDk-v5uC2jzAKOTOTH37g_EhyBOXR6';   /* clé publique : sb_publishable_... ou eyJ...  */
-var SUPABASE_TABLE = 'pv';
 /* ======================================================= */
 
-var syncState = { pending: 0, lastError: '' };
+var syncState = { pending: 0, lastError: '', needCode: false };
 
 function cloudOn() { return !!(SUPABASE_URL && SUPABASE_KEY); }
 /* accepte https://xxx.supabase.co comme https://xxx.supabase.co/rest/v1/ */
@@ -1533,30 +1545,46 @@ function storeLoad() {
   return h;
 }
 
+/* ---------- code d'équipe ----------
+   L'application n'accède plus directement à la table : elle appelle des
+   fonctions SQL qui vérifient d'abord le code. Le code n'est jamais dans
+   ce fichier — il est saisi par le driver et gardé sur son appareil. */
+function codeGet() { try { return localStorage.getItem('pvcheck-code') || ''; } catch (e) { return ''; } }
+function codeSet(c) { try { if (c) localStorage.setItem('pvcheck-code', c); else localStorage.removeItem('pvcheck-code'); } catch (e) { } }
+function codeOn() { return !!codeGet(); }
+function codeErr(msg) { var e = new Error(msg); e.badCode = true; return e; }
+
+function rpc(fn, body) {
+  return fetch(api('rpc/' + fn), {
+    method: 'POST',
+    headers: apiHeaders(),
+    body: JSON.stringify(body)
+  }).then(function (r) {
+    if (r.ok) return r.status === 204 ? null : r.json().catch(function () { return null; });
+    return r.text().then(function (t) {
+      /* code refusé : on l'oublie pour que le driver puisse le ressaisir */
+      if (/code_invalide/.test(t)) { codeSet(''); throw codeErr('Code d\'équipe refusé.'); }
+      throw new Error('HTTP ' + r.status + ' — ' + t.slice(0, 160));
+    });
+  });
+}
+
 function cloudInsert(rec) {
+  if (!codeOn()) return Promise.reject(codeErr('Code d\'équipe requis.'));
   var row = {
     ref: rec.id, type: rec.type, pv_date: rec.date,
     immat: plate(rec.immat), client: rec.client, driver: rec.driver,
     damages: rec.damages.length, note: rec.note, data: rec
   };
-  return fetch(api(SUPABASE_TABLE), {
-    method: 'POST',
-    headers: apiHeaders({ 'Prefer': 'return=minimal' }),
-    body: JSON.stringify(row)
-  }).then(function (r) {
-    if (r.ok) return true;
-    if (r.status === 409) return true;   /* déjà enregistré : rien à refaire */
-    return r.text().then(function (t) { throw new Error('HTTP ' + r.status + ' — ' + t.slice(0, 160)); });
-  });
+  /* les doublons sont ignorés côté base (on conflict do nothing) */
+  return rpc('pv_enregistrer', { p_code: codeGet(), p_row: row }).then(function () { return true; });
 }
 
 function cloudFetch() {
-  return fetch(api(SUPABASE_TABLE + '?select=data&order=created_at.desc&limit=400'), { headers: apiHeaders() })
-    .then(function (r) {
-      if (!r.ok) return r.text().then(function (t) { throw new Error('HTTP ' + r.status + ' — ' + t.slice(0, 160)); });
-      return r.json();
-    })
-    .then(function (rows) { return rows.map(function (x) { return x.data; }).filter(Boolean); });
+  if (!codeOn()) return Promise.reject(codeErr('Code d\'équipe requis.'));
+  return rpc('pv_lister', { p_code: codeGet() }).then(function (rows) {
+    return (rows || []).filter(Boolean);
+  });
 }
 
 /* fusionne la base centrale avec les PV locaux, sans perdre ceux en attente */
@@ -1625,6 +1653,9 @@ function storeStatus() {
   if (!cloudOn()) {
     return { tone: 'warn', title: 'Mode local', text: 'Les PV ne sont enregistrés que sur cet appareil. Renseignez SUPABASE_URL et SUPABASE_KEY en haut du fichier pour centraliser l\'historique.' };
   }
+  if (!codeOn()) {
+    return { tone: 'warn', title: 'Code d\'équipe requis', text: 'Saisissez le code de l\'équipe pour enregistrer les PV dans l\'historique partagé. Une seule fois sur cet appareil.', code: true };
+  }
   if (syncState.pending) {
     return { tone: 'warn', title: syncState.pending + ' PV en attente d\'envoi', text: 'Ils partiront automatiquement dès le retour du réseau.', retry: true };
   }
@@ -1637,7 +1668,7 @@ function storeStatus() {
 function storeRetry() {
   flushPending(function () {
     cloudFetch().then(function (remote) { mergeRemote(remote); render(); })
-      .catch(function (e) { syncState.lastError = e.message; render(); });
+      .catch(function (e) { syncState.lastError = e.message; render(); if (e.badCode) askCode(e.message); });
   });
 }
 
@@ -1669,6 +1700,7 @@ document.addEventListener('click', function (e) {
     return;
   }
   if (t.dataset.act === 'pdf') { downloadPdf(S); return; }
+  if (t.dataset.act === 'code') { askCode(''); return; }
   if (t.dataset.act === 'sync') { if (typeof storeRetry === 'function') { toast('Synchronisation…'); storeRetry(); } return; }
   if (t.dataset.act === 'mail') { mailPv(S); return; }
   if (t.dataset.act === 'mail-last') {
@@ -1761,10 +1793,35 @@ $('filepick').addEventListener('change', function () {
 
 window.addEventListener('resize', function () { if (screen === 'step' && step === 2) paintMarkers(); });
 
+/* ---------- fenêtre de saisie du code ---------- */
+function askCode(msg) {
+  var err = $('codeErr');
+  err.textContent = msg || '';
+  err.style.display = msg ? 'block' : 'none';
+  $('codeIn').value = '';
+  $('codeOv').classList.add('on');
+  setTimeout(function () { try { $('codeIn').focus(); } catch (e) { } }, 60);
+}
+function closeCode() { $('codeOv').classList.remove('on'); }
+
+$('codeOk').addEventListener('click', function () {
+  var c = String($('codeIn').value || '').trim();
+  if (!c) { askCode('Saisissez le code.'); return; }
+  codeSet(c);
+  closeCode();
+  toast('Vérification du code…');
+  storeRetry();
+});
+$('codeSkip').addEventListener('click', function () { closeCode(); render(); });
+$('codeIn').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); $('codeOk').click(); } });
+
 /* démarrage */
 HIST = storeLoad();
 render();
 storeBoot();
+/* premier lancement sur cet appareil : on demande le code tout de suite,
+   sans bloquer — un driver hors réseau doit pouvoir rédiger son PV. */
+if (cloudOn() && !codeOn()) askCode('');
 
 </script>
 </body>
